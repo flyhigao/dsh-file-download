@@ -1,24 +1,26 @@
 {
-  "name": "dsh-file-download",
-  "version": "0.1.2",
-  "description": "Add a download button to DSH's document preview sidebar toolbar.",
+  "name": "dsh-file-transfer",
+  "version": "0.2.0",
+  "description": "Add confirmed downloads and 1 GiB-capped, streamed uploads to DSH's file preview and workspace file tree.",
   "type": "module",
   "main": "lib/index.js",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/flyhigao/dsh-file-download.git"
+    "url": "git+https://github.com/flyhigao/dsh-file-transfer.git"
   },
-  "homepage": "https://github.com/flyhigao/dsh-file-download#readme",
+  "homepage": "https://github.com/flyhigao/dsh-file-transfer#readme",
   "bugs": {
-    "url": "https://github.com/flyhigao/dsh-file-download/issues"
+    "url": "https://github.com/flyhigao/dsh-file-transfer/issues"
   },
   "keywords": [
     "deepseek",
     "harness",
     "dsh",
     "dsh-plugin",
+    "file-transfer",
     "file-download",
+    "file-upload",
     "workspace"
   ],
   "engines": {

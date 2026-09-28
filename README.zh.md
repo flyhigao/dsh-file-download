@@ -1,45 +1,80 @@
-# dsh-file-download
+# dsh-file-transfer
 
 [English](README.md) | 简体中文
 
-DeepSeek Harness 下载插件：在右侧文件预览工具栏和工作区文件/文件夹列表行尾添加下载按钮。
+DeepSeek Harness 文件传输插件：在右侧文件预览工具栏和 Files 文件树的文件夹/文件行尾添加**下载**与**上传**按钮。
 
 ## 功能
 
+### 下载
+
 - 按原文件名下载当前正在预览的文件。
-- 通过 DSH 已鉴权、按会话隔离的 `workspaceFiles` Remote 读取文件；不新增服务端路由，也不让浏览器直接访问文件系统。
+- 通过 DSH 已鉴权、按会话隔离的 `workspaceFiles` Remote 读取文件；不让浏览器直接访问文件系统。
 - 读取文件内容前显示确认框。文件夹下载会先显示扫描进度框，并明确告知只读取目录项和文件大小；扫描完成后再显示压缩前总大小和文件数量，用户确认后才开始 ZIP 打包。
 - 压缩前总大小超过 10 GiB 时拒绝下载。若目录列表被截断或无法确认任一文件大小，也会阻止下载，避免少报总量。
 - 单个文件大于 1 GiB 时，仅对扩展名判断为文本类的文件创建 ZIP 压缩；二进制/媒体文件不做重复压缩。文件夹始终打 ZIP；确认后对文本类文件抽样，预计压缩收益不足 5% 的文件会原样存储。确认框先显示压缩前大小，压缩开始后会更新为抽样估算的 ZIP 大小。
 - 按 2 MiB 分段读取，并在下载过程中校验文件身份和版本。浏览器支持文件系统保存选择器时，ZIP 内容会直接流式写入目标文件，不会把整个压缩包放入内存。传输期间确认框保持打开，取消按钮会中止读取/压缩并删除未完成的目标文件。
 - 大文件使用浏览器的流式保存选择器；不支持流式保存的浏览器拒绝超过 256 MiB 的输出，避免将数 GiB 数据缓存在内存中。
 - 文件不可读、超过限制或下载中途变化时显示具体错误。
-- 只要 DSH 已解析出文件路径，支持预览的文件和暂不支持预览的文件均可下载。
+
+### 上传
+
+- 在**文件夹行**的下载按钮旁增加上传按钮（`📁 reports  ↓ ↑`），把本地文件直接上传到该文件夹。
+- 弹出多选文件对话框，一次可选多个文件排队上传。只支持文件，不做递归文件夹上传。
+- 开始传输前先二次确认目标路径、文件数量和总大小，并再次校验当前标签页仍停留在该文件夹所属的会话。
+- **单个文件硬上限 1 GiB**，超限文件在开始上传前就被拒绝。
+- 分块流式直写磁盘：浏览器从磁盘读、Host 边收边写，两侧都不会把整个文件放进内存。
+- 显示逐文件字节进度，支持传输中途取消；Host 会清理已落盘的临时文件，取消后不会留下残缺文件。
+- 同名文件**绝不覆盖**：`report.txt` 会存为 `report(1).txt`，再上传则为 `report(2).txt`。
+- 上传完成后自动刷新文件树，新文件立即出现。
 
 插件继续遵循 Host 现有的会话和文件系统权限，不会绕过文件授权。
+
+## 上传的鉴权方式
+
+下载走 DSH 的 `workspaceFiles` Remote，它是只读的，所以上传由本插件自己的 Host 路由完成：
+
+```
+POST /dsh-file-transfer/upload?sessionId=<id>&directory=<path>&name=<file>
+     content-type: application/octet-stream
+     body: 文件原始字节
+```
+
+该路由不信任浏览器传来的任何文件系统路径：
+
+1. 请求必须同源。
+2. sessionId 必须对应一个**仍然存活**的会话；目标目录通过该会话自己的文件系统 provider，相对会话不可变的 `cwd` 解析。
+3. 解析结果必须落在该会话的工作区内，并且必须是一个已存在的目录。
+4. 请求体上限 1 GiB，先落到目标文件夹内的隐藏临时文件。
+5. 写完后用原子且不覆盖的硬链接发布最终文件：半截文件不会被看到，已存在的文件也不会被截断或覆盖。同名冲突通过追加 `(n)` 后缀解决。
+6. 任何失败路径都会删除已落盘的临时文件。
+
+该路由由插件的 Host 入口注册，不修改任何 DSH 核心包。
 
 ## 环境要求
 
 - DSH Web `0.1.7-rc.2` 或更新版本，并启用文档预览和 workspace file Remote。
-- 当前会话有权限读取目标文件。
+- 会话工作区位于 Host 可写入的文件系统上。
 
 ## 安装
 
-在 DSH 插件市场搜索 **dsh-file-download**，安装到所需 profile。安装后重启 DSH Web 服务，并在浏览器中硬刷新页面。
+在 DSH 插件市场搜索 **dsh-file-transfer**，安装到所需 profile。安装后重启 DSH Web 服务，并在浏览器中硬刷新页面。
 
 也可以直接从 GitHub 安装：
 
 ```bash
-dsh plugin --profile web add github:flyhigao/dsh-file-download
+dsh plugin --profile web add github:flyhigao/dsh-file-transfer
 ```
 
 本地开发安装：
 
 ```bash
-dsh plugin --profile web add file:/path/to/dsh-file-download
+dsh plugin --profile web add file:/path/to/dsh-file-transfer
 ```
 
 ## 使用
+
+### 下载
 
 1. 在右侧 Files 文件栏打开一个文件，使其显示在预览页中。
 2. 点击预览刷新按钮旁的下载图标。
@@ -47,10 +82,19 @@ dsh plugin --profile web add file:/path/to/dsh-file-download
 
 所有下载都会先显示确认框，列出压缩前大小和计划采用的处理方式。大于 1 GiB 的单文件，仅在扩展名判断为文本类时使用 ZIP 压缩；疑似二进制/媒体文件不重复压缩。文件夹始终下载为 ZIP，并以文件夹名作为 ZIP 内的顶层目录。10 GiB 限制按压缩前输入总量计算，不按 ZIP 输出大小计算。大文件需要浏览器支持流式保存到指定位置；否则超过 256 MiB 的输出会被拒绝。压缩策略基于扩展名估算，不会检查文件内容，实际压缩率可能不同。
 
+### 上传
+
+1. 在右侧 Files 文件栏把鼠标移到某个**文件夹**行，行尾会出现下载图标和上传图标。
+2. 点击上传图标（↑）弹出文件选择框，可一次选中多个文件。
+3. 在确认框中核对目标文件夹、文件数量和总大小，然后点击开始上传。
+4. 上传过程中显示逐文件进度，可随时取消；Host 会删除未完成的临时文件。
+5. 上传结束后文件树自动刷新；若存在同名文件，新文件会以 `(n)` 后缀出现。
+
 ## 包结构
 
-- `lib/index.js` — Host 插件入口。
-- `client/client.js` — 客户端下载操作。
+- `lib/index.js` — Host 插件入口，注册上传路由。
+- `lib/upload-route.js` — 流式、限定在工作区内的上传处理逻辑。
+- `client/client.js` — 客户端下载操作、上传对话框和文件树行尾按钮。
 - `cordis.patch.yml` — 将插件包加入 profile bundle。
 - `package.json` — DSH 可安装 bundle 和客户端注入清单。
 
@@ -60,6 +104,7 @@ dsh plugin --profile web add file:/path/to/dsh-file-download
 
 ```bash
 node --check lib/index.js
+node --check lib/upload-route.js
 node --check client/client.js
 npm pack --dry-run
 ```

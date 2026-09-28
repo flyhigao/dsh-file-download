@@ -1,8 +1,8 @@
-/* dsh-file-download browser half.
+/* dsh-file-transfer browser half.
  * Adds confirmed downloads to the document preview and workspace file tree.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-file-download',
+  id: 'dsh-file-transfer',
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;
@@ -16,9 +16,14 @@ window.__ModuleLoader__.load({
     var MAX_FALLBACK_BLOB = 256 * 1024 * 1024;
     var RANGE_BYTES = 2 * 1024 * 1024;
     var MAX_TREE_ENTRIES = 100000;
-    var TREE_ROW_ACTION = 'dsh-file-download-tree-action';
-    var STYLE_ID = 'dsh-file-download-style';
-    var NS = 'dsh-file-download';
+    var TREE_ROW_ACTION = 'dsh-file-transfer-tree-action';
+    var STYLE_ID = 'dsh-file-transfer-style';
+    var NS = 'dsh-file-transfer';
+    var MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
+    var UPLOAD_ROUTE = 'dsh-file-transfer/upload';
+    var TREE_UPLOAD_ACTION = 'dsh-file-transfer-upload-action';
+    var ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 17v3h14v-3"/></svg>';
+    var ICON_UPLOAD = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m0 0 5 5m-5-5-5 5M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>';
 
     var zh = {
       download: '下载',
@@ -60,6 +65,22 @@ window.__ModuleLoader__.load({
       changed: '文件在下载过程中发生变化，请重试。',
       noSession: '没有可用的当前会话。',
       emptyFolder: '空文件夹',
+      upload: '上传',
+      uploadTitle: '上传文件',
+      uploadTarget: '目标文件夹：{path}',
+      uploadCount: '文件数量：{count}',
+      uploadTotal: '总大小：{size}',
+      uploadMax: '单个文件上限 1 GiB，超出会被拒绝。',
+      uploadCollision: '若目标文件夹已存在同名文件，将自动改存为“名称(n)”，不会覆盖原文件。',
+      uploadStart: '开始上传',
+      uploadCancel: '取消上传',
+      uploadProgress: '正在上传 {name}：{done} / {total}',
+      uploadDone: '已上传：{names}',
+      uploadFailed: '上传失败：{message}',
+      uploadCancelled: '上传已取消，未完成的临时文件已清理。',
+      uploadSessionChanged: '会话已切换，请重新开始上传。',
+      uploadTooLarge: '以下文件超过 1 GiB 上限，未开始上传：{names}',
+      close: '关闭',
     };
     var en = {
       download: 'Download',
@@ -101,6 +122,22 @@ window.__ModuleLoader__.load({
       changed: 'A file changed during download. Please retry.',
       noSession: 'There is no active session.',
       emptyFolder: 'Empty folder',
+      upload: 'Upload',
+      uploadTitle: 'Upload files',
+      uploadTarget: 'Destination folder: {path}',
+      uploadCount: 'Files selected: {count}',
+      uploadTotal: 'Total size: {size}',
+      uploadMax: 'Each file is limited to 1 GiB; larger files are rejected.',
+      uploadCollision: 'A name already present in the folder is saved as “name(n)” instead. Existing files are never overwritten.',
+      uploadStart: 'Start upload',
+      uploadCancel: 'Cancel upload',
+      uploadProgress: 'Uploading {name}: {done} / {total}',
+      uploadDone: 'Uploaded: {names}',
+      uploadFailed: 'Upload failed: {message}',
+      uploadCancelled: 'Upload cancelled; the incomplete temporary file was removed.',
+      uploadSessionChanged: 'The active session changed. Start the upload again.',
+      uploadTooLarge: 'These files exceed the 1 GiB limit and were not uploaded: {names}',
+      close: 'Close',
     };
 
     function tr(dict, key, values) {
@@ -139,27 +176,27 @@ window.__ModuleLoader__.load({
       var style = document.createElement('style');
       style.id = STYLE_ID;
       style.textContent = [
-        '.dsh-file-download-tool{width:28px;height:28px;color:var(--dsw-alias-label-secondary);border-radius:var(--dsw-radius-sm);cursor:pointer;background:transparent;border:0;flex:none;display:inline-flex;justify-content:center;align-items:center;padding:6px;line-height:1}',
-        '.dsh-file-download-tool svg{width:15px;height:15px}',
-        '.dsh-file-download-tool:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
-        '.dsh-file-download-tool:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}',
+        '.dsh-file-transfer-tool{width:28px;height:28px;color:var(--dsw-alias-label-secondary);border-radius:var(--dsw-radius-sm);cursor:pointer;background:transparent;border:0;flex:none;display:inline-flex;justify-content:center;align-items:center;padding:6px;line-height:1}',
+        '.dsh-file-transfer-tool svg{width:15px;height:15px}',
+        '.dsh-file-transfer-tool:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
+        '.dsh-file-transfer-tool:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}',
         'li[data-files-entry="file"],li[data-files-entry="directory"]{display:flex;align-items:center;gap:2px;flex-wrap:wrap}',
         'li[data-files-entry="file"]>.k-1LKG_row,li[data-files-entry="directory"]>.k-1LKG_row{width:auto;flex:1;min-width:0}',
         'li[data-files-entry="directory"]>ul{flex:0 0 100%;width:100%;box-sizing:border-box}',
-        '.dsh-file-download-tree-action{opacity:0;transition:opacity .12s ease}',
-        'li[data-files-entry="file"]:hover>.dsh-file-download-tree-action,li[data-files-entry="file"]:focus-within>.dsh-file-download-tree-action,li[data-files-entry="directory"]:hover>.dsh-file-download-tree-action,li[data-files-entry="directory"]:focus-within>.dsh-file-download-tree-action{opacity:1}',
-        '@media(hover:none){.dsh-file-download-tree-action{opacity:1}}',
-        '.dsh-file-download-dialog{width:min(520px,calc(100vw - 32px));max-height:min(80vh,720px);padding:0;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:0 24px 80px #0005}',
-        '.dsh-file-download-dialog::backdrop{background:#0008}',
-        '.dsh-file-download-dialog-inner{padding:20px}',
-        '.dsh-file-download-dialog h2{margin:0 0 14px;font-size:17px}',
-        '.dsh-file-download-dialog p{margin:8px 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.55;overflow-wrap:anywhere}',
-        '.dsh-file-download-dialog .dsh-file-download-error{color:var(--dsw-alias-label-danger,#d92d20)}',
-        '.dsh-file-download-dialog .dsh-file-download-progress{margin-top:14px}',
-        '.dsh-file-download-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}',
-        '.dsh-file-download-actions button{min-height:34px;padding:0 13px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font:inherit;cursor:pointer}',
-        '.dsh-file-download-actions button[data-primary]{color:#fff;background:var(--dsw-alias-brand-primary);border-color:transparent}',
-        '.dsh-file-download-actions button:disabled{opacity:.55;cursor:default}'
+        '.dsh-file-transfer-tree-action,.dsh-file-transfer-upload-action{opacity:0;transition:opacity .12s ease}',
+        'li[data-files-entry="file"]:hover>.dsh-file-transfer-tree-action,li[data-files-entry="file"]:focus-within>.dsh-file-transfer-tree-action,li[data-files-entry="directory"]:hover>.dsh-file-transfer-tree-action,li[data-files-entry="directory"]:focus-within>.dsh-file-transfer-tree-action,li[data-files-entry="directory"]:hover>.dsh-file-transfer-upload-action,li[data-files-entry="directory"]:focus-within>.dsh-file-transfer-upload-action{opacity:1}',
+        '@media(hover:none){.dsh-file-transfer-tree-action,.dsh-file-transfer-upload-action{opacity:1}}',
+        '.dsh-file-transfer-dialog{width:min(520px,calc(100vw - 32px));max-height:min(80vh,720px);padding:0;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:0 24px 80px #0005}',
+        '.dsh-file-transfer-dialog::backdrop{background:#0008}',
+        '.dsh-file-transfer-dialog-inner{padding:20px}',
+        '.dsh-file-transfer-dialog h2{margin:0 0 14px;font-size:17px}',
+        '.dsh-file-transfer-dialog p{margin:8px 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.55;overflow-wrap:anywhere}',
+        '.dsh-file-transfer-dialog .dsh-file-transfer-error{color:var(--dsw-alias-label-danger,#d92d20)}',
+        '.dsh-file-transfer-dialog .dsh-file-transfer-progress{margin-top:14px}',
+        '.dsh-file-transfer-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}',
+        '.dsh-file-transfer-actions button{min-height:34px;padding:0 13px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font:inherit;cursor:pointer}',
+        '.dsh-file-transfer-actions button[data-primary]{color:#fff;background:var(--dsw-alias-brand-primary);border-color:transparent}',
+        '.dsh-file-transfer-actions button:disabled{opacity:.55;cursor:default}'
       ].join('');
       document.head.appendChild(style);
     }
@@ -354,13 +391,13 @@ window.__ModuleLoader__.load({
     function makeScanningDialog(dict, name, controller) {
       installStyle();
       var dialog = document.createElement('dialog');
-      dialog.className = 'dsh-file-download-dialog';
-      var inner = document.createElement('div'); inner.className = 'dsh-file-download-dialog-inner';
+      dialog.className = 'dsh-file-transfer-dialog';
+      var inner = document.createElement('div'); inner.className = 'dsh-file-transfer-dialog-inner';
       var heading = document.createElement('h2'); heading.textContent = tr(dict, 'scanning');
       var nameLine = document.createElement('p'); nameLine.textContent = cleanName(name);
       var details = document.createElement('p'); details.textContent = tr(dict, 'scanReadOnly');
-      var progress = document.createElement('p'); progress.className = 'dsh-file-download-progress'; progress.textContent = tr(dict, 'scanningProgress', { count: 0, size: formatBytes(0) });
-      var actions = document.createElement('div'); actions.className = 'dsh-file-download-actions';
+      var progress = document.createElement('p'); progress.className = 'dsh-file-transfer-progress'; progress.textContent = tr(dict, 'scanningProgress', { count: 0, size: formatBytes(0) });
+      var actions = document.createElement('div'); actions.className = 'dsh-file-transfer-actions';
       var cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = tr(dict, 'cancel');
       cancel.addEventListener('click', function(){ controller.abort(); cancel.disabled = true; cancel.textContent = tr(dict, 'cancel') + '…'; });
       actions.appendChild(cancel);
@@ -376,8 +413,8 @@ window.__ModuleLoader__.load({
     function makeDialog(dict, plan, hooks) {
       installStyle();
       var dialog = document.createElement('dialog');
-      dialog.className = 'dsh-file-download-dialog';
-      var inner = document.createElement('div'); inner.className = 'dsh-file-download-dialog-inner';
+      dialog.className = 'dsh-file-transfer-dialog';
+      var inner = document.createElement('div'); inner.className = 'dsh-file-transfer-dialog-inner';
       var heading = document.createElement('h2'); heading.textContent = tr(dict, 'confirmTitle');
       function paragraph(text, className) { var p = document.createElement('p'); p.textContent = text; if (className) p.className = className; inner.appendChild(p); return p; }
       inner.appendChild(heading);
@@ -385,22 +422,22 @@ window.__ModuleLoader__.load({
       if (plan.blocked === 'unknown-size') paragraph(tr(dict, 'confirmUnknownFileSize'));
       else paragraph(tr(dict, !plan.sizeExact ? 'confirmSizeLower' : 'confirmSize', { size: formatBytes(plan.size) }));
       if (plan.kind === 'folder') paragraph(tr(dict, !plan.sizeExact ? 'confirmCountLower' : 'confirmCount', { count: plan.files.length }));
-      if (plan.blocked === 'unknown') paragraph(tr(dict, 'confirmUnknownSize'), 'dsh-file-download-error');
-      else if (plan.blocked === 'unknown-size') paragraph(tr(dict, 'fileSizeUnknown'), 'dsh-file-download-error');
-      else if (plan.blocked === 'too-large') paragraph(tr(dict, 'confirmTooLarge'), 'dsh-file-download-error');
-      else if (plan.blocked === 'too-many') paragraph(tr(dict, 'confirmTooMany'), 'dsh-file-download-error');
+      if (plan.blocked === 'unknown') paragraph(tr(dict, 'confirmUnknownSize'), 'dsh-file-transfer-error');
+      else if (plan.blocked === 'unknown-size') paragraph(tr(dict, 'fileSizeUnknown'), 'dsh-file-transfer-error');
+      else if (plan.blocked === 'too-large') paragraph(tr(dict, 'confirmTooLarge'), 'dsh-file-transfer-error');
+      else if (plan.blocked === 'too-many') paragraph(tr(dict, 'confirmTooMany'), 'dsh-file-transfer-error');
       else {
         paragraph(tr(dict, plan.mode === 'direct' ? 'confirmDirect' : plan.mode === 'zip' ? plan.mixed ? 'confirmZipMixed' : plan.compressible ? 'confirmZipCompressed' : 'confirmZipStore' : 'confirmZipMixed'));
         if (plan.mode !== 'direct') paragraph(tr(dict, 'confirmEstimate'));
-        var estimateNode = paragraph(plan.mode === 'direct' ? '' : tr(dict, 'estimateAfterStart'), 'dsh-file-download-estimate');
+        var estimateNode = paragraph(plan.mode === 'direct' ? '' : tr(dict, 'estimateAfterStart'), 'dsh-file-transfer-estimate');
         estimateNode.hidden = plan.mode === 'direct';
         plan.updateZipEstimate = function(value, sampling) { estimateNode.textContent = tr(dict, 'estimateCompressed', { size: formatBytes(value) }) + (sampling ? ' …' : ''); };
         if (plan.zipEstimate !== void 0 && plan.mode !== 'direct') plan.updateZipEstimate(plan.zipEstimate, true);
-        if (plan.size > MAX_FALLBACK_BLOB && typeof window.showSaveFilePicker !== 'function') paragraph(tr(dict, 'streamRequired'), 'dsh-file-download-error');
+        if (plan.size > MAX_FALLBACK_BLOB && typeof window.showSaveFilePicker !== 'function') paragraph(tr(dict, 'streamRequired'), 'dsh-file-transfer-error');
       }
-      var progress = paragraph('', 'dsh-file-download-progress'); progress.hidden = true;
-      var error = paragraph('', 'dsh-file-download-error'); error.hidden = true;
-      var actions = document.createElement('div'); actions.className = 'dsh-file-download-actions';
+      var progress = paragraph('', 'dsh-file-transfer-progress'); progress.hidden = true;
+      var error = paragraph('', 'dsh-file-transfer-error'); error.hidden = true;
+      var actions = document.createElement('div'); actions.className = 'dsh-file-transfer-actions';
       var cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = tr(dict, 'cancel');
       var requiresStreaming = plan.size > MAX_FALLBACK_BLOB && typeof window.showSaveFilePicker !== 'function';
       var confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = tr(dict, 'confirm'); confirm.setAttribute('data-primary', 'true'); confirm.disabled = Boolean(plan.blocked) || requiresStreaming;
@@ -572,7 +609,7 @@ window.__ModuleLoader__.load({
       }).catch(function (error) {
         if(scanDialog) scanDialog.close();
         if(!scanController.signal.aborted) {
-          console.error('[dsh-file-download] scan failed:', error);
+          console.error('[dsh-file-transfer] scan failed:', error);
           window.alert(error && error.message ? error.message : String(error));
         }
         if (onDone) onDone();
@@ -592,37 +629,260 @@ window.__ModuleLoader__.load({
       return React.createElement(Tooltip, {
         label: t('download'), side: 'bottom', delayMs: 500,
         children: React.createElement('button', {
-          type: 'button', className: 'dsh-file-download-tool', 'aria-label': label,
+          type: 'button', className: 'dsh-file-transfer-tool', 'aria-label': label,
           title: label, 'data-textpreview-tool': 'download', disabled: busy,
           onClick: click, children: React.createElement(IconDownloadOutlineRegular, { size: 16 })
         })
       });
     }
 
+    /** The Host upload endpoint for one file in one folder. */
+    function uploadUrl(sessionId, directory, name) {
+      var query = new URLSearchParams();
+      query.set('sessionId', String(sessionId));
+      query.set('directory', String(directory));
+      query.set('name', String(name));
+      return UPLOAD_ROUTE + '?' + query.toString();
+    }
+
+    /**
+     * Ask one yes/no question in a plain dialog. Resolves false when the user
+     * dismisses it, so an accidental Escape never starts a transfer.
+     */
+    function makeSimpleDialog(dict, title, lines, primaryLabel) {
+      return new Promise(function (resolve) {
+        installStyle();
+        var dialog = document.createElement('dialog');
+        dialog.className = 'dsh-file-transfer-dialog';
+        var inner = document.createElement('div'); inner.className = 'dsh-file-transfer-dialog-inner';
+        var heading = document.createElement('h2'); heading.textContent = title; inner.appendChild(heading);
+        lines.forEach(function (line) { var p = document.createElement('p'); p.textContent = line; inner.appendChild(p); });
+        var actions = document.createElement('div'); actions.className = 'dsh-file-transfer-actions';
+        var cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = tr(dict, 'cancel');
+        var confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = primaryLabel; confirm.setAttribute('data-primary', 'true');
+        actions.appendChild(cancel); actions.appendChild(confirm); inner.appendChild(actions);
+        dialog.appendChild(inner); document.body.appendChild(dialog);
+        var settled = false;
+        function close(value) { if (settled) return; settled = true; if (dialog.open) dialog.close(); dialog.remove(); resolve(value); }
+        cancel.addEventListener('click', function () { close(false); });
+        dialog.addEventListener('cancel', function (event) { event.preventDefault(); close(false); });
+        confirm.addEventListener('click', function () { close(true); });
+        dialog.showModal();
+        confirm.focus();
+      });
+    }
+
+    /**
+     * Upload one file through XMLHttpRequest, the only transport that reports
+     * both body-upload progress and cancellation in every target browser. The
+     * browser streams the file from disk; the body is never held in JS.
+     */
+    function uploadOneFile(file, sessionId, directory, signal, onProgress) {
+      return new Promise(function (resolve, reject) {
+        var request = new XMLHttpRequest();
+        var settled = false;
+        function finish(settle, value) {
+          if (settled) return;
+          settled = true;
+          signal.removeEventListener('abort', abort);
+          settle(value);
+        }
+        function abort() {
+          request.abort();
+          finish(reject, new DOMException('Upload cancelled', 'AbortError'));
+        }
+        request.open('POST', uploadUrl(sessionId, directory, file.name));
+        request.responseType = 'text';
+        request.setRequestHeader('Content-Type', 'application/octet-stream');
+        request.upload.addEventListener('progress', function (event) {
+          onProgress(event.loaded, event.lengthComputable ? event.total : file.size);
+        });
+        request.addEventListener('load', function () {
+          var body;
+          try { body = JSON.parse(request.responseText); } catch (_) { body = void 0; }
+          if (request.status === 201 && body && body.ok === true && typeof body.name === 'string') { finish(resolve, body); return; }
+          var message = body && body.error && body.error.message ? body.error.message : ('HTTP ' + request.status);
+          finish(reject, new Error(message));
+        });
+        request.addEventListener('error', function () { finish(reject, new Error('network error')); });
+        request.addEventListener('abort', function () { finish(reject, new DOMException('Upload cancelled', 'AbortError')); });
+        if (signal.aborted) { abort(); return; }
+        signal.addEventListener('abort', abort, { once: true });
+        request.send(file);
+      });
+    }
+
+    /** Re-read the Files tree so freshly uploaded entries appear. */
+    function refreshTree() {
+      var reload = document.querySelector('button[data-files-reload]');
+      if (reload) reload.click();
+    }
+
+    /** Render the modal that drives a multi-file upload, with progress and cancel. */
+    function runUpload(ctx, sessionId, directory, dict, button, files) {
+      var controller = new AbortController();
+      var dialog = document.createElement('dialog');
+      dialog.className = 'dsh-file-transfer-dialog';
+      var inner = document.createElement('div'); inner.className = 'dsh-file-transfer-dialog-inner';
+      var heading = document.createElement('h2'); heading.textContent = tr(dict, 'uploadTitle'); inner.appendChild(heading);
+      var target = document.createElement('p'); target.textContent = tr(dict, 'uploadTarget', { path: directory }); inner.appendChild(target);
+      var progress = document.createElement('p'); progress.className = 'dsh-file-transfer-progress';
+      progress.textContent = tr(dict, 'uploadTotal', { size: formatBytes(files.reduce(function (sum, file) { return sum + file.size; }, 0)) });
+      inner.appendChild(progress);
+      var error = document.createElement('p'); error.className = 'dsh-file-transfer-error'; error.hidden = true; inner.appendChild(error);
+      var actions = document.createElement('div'); actions.className = 'dsh-file-transfer-actions';
+      var cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = tr(dict, 'uploadCancel');
+      var close = document.createElement('button'); close.type = 'button'; close.textContent = tr(dict, 'close'); close.setAttribute('data-primary', 'true'); close.hidden = true;
+      actions.appendChild(cancel); actions.appendChild(close); inner.appendChild(actions);
+      dialog.appendChild(inner); document.body.appendChild(dialog);
+      var uploading = true;
+      var settled = false;
+      function dismiss() { if (settled) return; settled = true; if (dialog.open) dialog.close(); dialog.remove(); }
+      function finishView() { uploading = false; cancel.hidden = true; close.hidden = false; close.disabled = false; close.focus(); }
+      function onCancel() {
+        if (!uploading) { dismiss(); return; }
+        controller.abort();
+        cancel.disabled = true;
+        cancel.textContent = tr(dict, 'uploadCancel') + '…';
+      }
+      cancel.addEventListener('click', onCancel);
+      close.addEventListener('click', dismiss);
+      dialog.addEventListener('cancel', function (event) { event.preventDefault(); onCancel(); });
+      button.disabled = true;
+      dialog.showModal();
+      (async function () {
+        var uploaded = [];
+        try {
+          for (var index = 0; index < files.length; index += 1) {
+            if (controller.signal.aborted) throw new DOMException('Upload cancelled', 'AbortError');
+            var file = files[index];
+            var label = files.length > 1 ? ('[' + (index + 1) + '/' + files.length + '] ') : '';
+            progress.textContent = label + tr(dict, 'uploadProgress', { name: file.name, done: formatBytes(0), total: formatBytes(file.size) });
+            var result = await uploadOneFile(file, sessionId, directory, controller.signal, function (loaded, expected) {
+              progress.textContent = label + tr(dict, 'uploadProgress', { name: file.name, done: formatBytes(loaded), total: formatBytes(expected) });
+            });
+            uploaded.push(result.name);
+          }
+          progress.textContent = tr(dict, 'uploadDone', { names: uploaded.join(', ') });
+          finishView();
+        } catch (reason) {
+          if (controller.signal.aborted || (reason && reason.name === 'AbortError')) {
+            progress.textContent = tr(dict, 'uploadCancelled');
+          } else {
+            error.textContent = tr(dict, 'uploadFailed', { message: (reason && reason.message) || String(reason) });
+            error.hidden = false;
+          }
+          finishView();
+        } finally {
+          button.disabled = false;
+          // Uploaded files must show up even after a partial failure.
+          refreshTree();
+        }
+      })();
+    }
+
+    /** Open the file picker, confirm the destination, then start the upload. */
+    function chooseAndUpload(ctx, sessionId, directory, dict, button) {
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      var answered = false;
+      function settle(files) {
+        if (answered) return;
+        answered = true;
+        window.clearTimeout(timer);
+        input.removeEventListener('change', onChange);
+        input.removeEventListener('cancel', onCancel);
+        if (input.parentNode) input.parentNode.removeChild(input);
+        start(files);
+      }
+      function onChange() { settle(Array.prototype.slice.call(input.files || [])); }
+      // A dismissed picker fires no `change` in some browsers; the timeout and
+      // the `cancel` event only release the input, they never start an upload.
+      function onCancel() { settle([]); }
+      input.addEventListener('change', onChange);
+      input.addEventListener('cancel', onCancel);
+      var timer = window.setTimeout(function () { settle([]); }, 120000);
+      input.click();
+
+      async function start(files) {
+        if (files.length === 0) return;
+        if (!currentSessionId(ctx, sessionId)) { window.alert(tr(dict, 'uploadSessionChanged')); return; }
+        var oversized = files.filter(function (file) { return file.size > MAX_UPLOAD_BYTES; });
+        if (oversized.length > 0) {
+          window.alert(tr(dict, 'uploadTooLarge', { names: oversized.map(function (file) { return file.name; }).join(', ') }));
+          return;
+        }
+        var total = files.reduce(function (sum, file) { return sum + file.size; }, 0);
+        var confirmed = await makeSimpleDialog(dict, tr(dict, 'uploadTitle'), [
+          tr(dict, 'uploadTarget', { path: directory }),
+          tr(dict, 'uploadCount', { count: files.length }),
+          tr(dict, 'uploadTotal', { size: formatBytes(total) }),
+          tr(dict, 'uploadMax'),
+          tr(dict, 'uploadCollision')
+        ], tr(dict, 'uploadStart'));
+        if (!confirmed) return;
+        // The workspace is per session; never write into a workspace the user
+        // has since navigated away from.
+        if (!currentSessionId(ctx, sessionId)) { window.alert(tr(dict, 'uploadSessionChanged')); return; }
+        runUpload(ctx, sessionId, directory, dict, button, files);
+      }
+    }
+
+    /** True while the browser still shows the session the target folder belongs to. */
+    function currentSessionId(ctx, expected) {
+      var snapshot = ctx.uiSession.adapter.current.getSnapshot();
+      return Boolean(snapshot) && snapshot.key === expected;
+    }
+
     function installTreeActions(ctx, remote) {
       var observer;
       var localeIsZh = function(){ return /^zh/i.test(document.documentElement.lang || navigator.language || 'en'); };
-      function addButton(row) {
+      function addDownloadButton(row, kind, path, dict, downloadLabel) {
         if (row.querySelector(':scope > .' + TREE_ROW_ACTION)) return;
-        var kind = row.getAttribute('data-files-entry');
-        if (kind !== 'file' && kind !== 'directory') return;
-        var path = row.getAttribute('data-files-path');
-        if (!path) return;
         var button = document.createElement('button');
-        button.type = 'button'; button.className = 'dsh-file-download-tool ' + TREE_ROW_ACTION;
-        button.setAttribute('aria-label', localeIsZh() ? '下载' : 'Download');
-        button.title = button.getAttribute('aria-label');
-        button.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 17v3h14v-3"/></svg>';
+        button.type = 'button'; button.className = 'dsh-file-transfer-tool ' + TREE_ROW_ACTION;
+        button.setAttribute('aria-label', downloadLabel);
+        button.title = downloadLabel;
+        button.innerHTML = ICON_DOWNLOAD;
         button.addEventListener('click', function(event){
           event.preventDefault(); event.stopPropagation();
           var sessionSnapshot = ctx.uiSession.adapter.current.getSnapshot();
           var sessionId = sessionSnapshot && sessionSnapshot.key;
-          if (!sessionId) { window.alert(tr(localeIsZh() ? zh : en,'noSession')); return; }
+          if (!sessionId) { window.alert(tr(dict,'noSession')); return; }
           button.disabled = true;
-          button.title = localeIsZh() ? zh.scanning : en.scanning;
-          openDownload(remote, sessionId, path, kind, localeIsZh() ? zh : en, function(){ button.disabled = false; button.title = localeIsZh() ? '下载' : 'Download'; });
+          button.title = dict.scanning;
+          openDownload(remote, sessionId, path, kind, dict, function(){ button.disabled = false; button.title = downloadLabel; });
         });
         row.appendChild(button);
+      }
+      function addUploadButton(row, path, dict, uploadLabel) {
+        if (row.querySelector(':scope > .' + TREE_UPLOAD_ACTION)) return;
+        var button = document.createElement('button');
+        button.type = 'button'; button.className = 'dsh-file-transfer-tool ' + TREE_UPLOAD_ACTION;
+        button.setAttribute('aria-label', uploadLabel);
+        button.title = uploadLabel;
+        button.innerHTML = ICON_UPLOAD;
+        button.addEventListener('click', function(event){
+          event.preventDefault(); event.stopPropagation();
+          var sessionSnapshot = ctx.uiSession.adapter.current.getSnapshot();
+          var sessionId = sessionSnapshot && sessionSnapshot.key;
+          if (!sessionId) { window.alert(tr(dict,'noSession')); return; }
+          chooseAndUpload(ctx, sessionId, path, dict, button);
+        });
+        row.appendChild(button);
+      }
+      function addButton(row) {
+        var kind = row.getAttribute('data-files-entry');
+        if (kind !== 'file' && kind !== 'directory') return;
+        var path = row.getAttribute('data-files-path');
+        if (!path) return;
+        var dict = localeIsZh() ? zh : en;
+        addDownloadButton(row, kind, path, dict, dict.download);
+        // Upload targets a folder; a file row keeps its download button only.
+        if (kind === 'directory') addUploadButton(row, path, dict, dict.upload);
       }
       function scan(root) {
         if (root.matches && root.matches('li[data-files-entry]')) addButton(root);
@@ -644,17 +904,17 @@ window.__ModuleLoader__.load({
         var bodyObserver = new MutationObserver(observe);
         bodyObserver.observe(document.body, { childList: true, subtree: true });
         return function(){ if(observer) observer.disconnect(); bodyObserver.disconnect(); };
-      }, 'dsh-file-download: workspace tree actions');
+      }, 'dsh-file-transfer: workspace tree actions');
       return disposer;
     }
 
     function apply(ctx) {
       installStyle();
-      ctx.effect(function () { return ctx.locale.register(NS, { zh: zh, en: en }); }, 'dsh-file-download: dictionaries');
+      ctx.effect(function () { return ctx.locale.register(NS, { zh: zh, en: en }); }, 'dsh-file-transfer: dictionaries');
       var t = ctx.locale.bind(NS);
       ctx.slots.inject('sidebar.right.tab.document.actions', function () {
         return ctx.slots.register({
-          name: 'sidebar.right.tab.document.actions', id: 'dsh-file-download', order: 20, locale: NS,
+          name: 'sidebar.right.tab.document.actions', id: 'dsh-file-transfer', order: 20, locale: NS,
           inject: function (_owner, hooks) {
             var tabInfoHook = hooks && hooks.tabInfo;
             var sessionId = tabInfoHook ? tabInfoHook().tab.sessionId : void 0;
@@ -669,7 +929,7 @@ window.__ModuleLoader__.load({
       installTreeActions(ctx, ctx.remote);
     }
 
-    exports.name = 'dsh-file-download';
+    exports.name = 'dsh-file-transfer';
     exports.inject = ['slots', 'locale', 'remote', 'remote.workspaceFiles', 'uiSession'];
     exports.apply = apply;
     return module.exports;

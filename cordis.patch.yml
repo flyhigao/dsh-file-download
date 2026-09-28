@@ -1,4 +1,6 @@
-# Add the file-download client plugin to the profile bundle.
+# Bundle layer for dsh-file-transfer: inserting this entry is what makes the
+# profile load the plugin (its `lib/index.js` host half registers the upload
+# route, its `client/client.js` half adds both file-browser buttons).
 - insert:
-    - id: dsh-file-download
-      name: 'dsh-file-download'
+    - id: dsh-file-transfer
+      name: 'dsh-file-transfer'
