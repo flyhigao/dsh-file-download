@@ -29,6 +29,20 @@ A small DeepSeek Harness plugin that adds **download** and **upload** actions to
 
 The Host's existing session and filesystem authorization still applies. This plugin does not bypass file permissions.
 
+## Screenshots
+
+Folder rows carry both actions — download (↓) and upload (↑); file rows keep download only:
+
+![Folder rows with a download and an upload button](assets/tree-buttons.png)
+
+An upload re-confirms the destination folder, the file count and the total size before anything is sent:
+
+![Upload confirmation dialog](assets/upload-confirm.png)
+
+It then reports per-file progress and can be cancelled mid-transfer, which removes the staged file:
+
+![Upload progress with a cancel button](assets/upload-progress.png)
+
 ## How uploads are authorized
 
 Downloading uses DSH's `workspaceFiles` Remote, which is read-only, so uploads go through a small Host route owned by this plugin:

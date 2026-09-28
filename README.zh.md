@@ -30,6 +30,20 @@ DeepSeek Harness 文件传输插件：在右侧文件预览工具栏和 Files �
 
 插件继续遵循 Host 现有的会话和文件系统权限，不会绕过文件授权。
 
+## 截图
+
+文件夹行同时带下载（↓）和上传（↑）两个按钮，文件行只有下载：
+
+![文件夹行上的下载与上传按钮](assets/tree-buttons.png)
+
+上传前会再次确认目标文件夹、文件数量和总大小：
+
+![上传确认框](assets/upload-confirm.png)
+
+上传过程中显示逐文件进度，可随时取消，取消会清理已落盘的临时文件：
+
+![上传进度与取消按钮](assets/upload-progress.png)
+
 ## 上传的鉴权方式
 
 下载走 DSH 的 `workspaceFiles` Remote，它是只读的，所以上传由本插件自己的 Host 路由完成：

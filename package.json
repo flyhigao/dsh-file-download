@@ -58,6 +58,8 @@
     "LICENSE",
     "lib",
     "client",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "screenshots.json",
+    "assets"
   ]
 }
