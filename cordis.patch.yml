@@ -1,0 +1,4 @@
+# Add the file-download client plugin to the profile bundle.
+- insert:
+    - id: dsh-file-download
+      name: 'dsh-file-download'
