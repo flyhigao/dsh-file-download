@@ -387,14 +387,15 @@ window.__ModuleLoader__.load({
       if (plan.kind === 'folder') paragraph(tr(dict, !plan.sizeExact ? 'confirmCountLower' : 'confirmCount', { count: plan.files.length }));
       if (plan.blocked === 'unknown') paragraph(tr(dict, 'confirmUnknownSize'), 'dsh-file-download-error');
       else if (plan.blocked === 'unknown-size') paragraph(tr(dict, 'fileSizeUnknown'), 'dsh-file-download-error');
-      else if (plan.blocked === 'too-many') paragraph(tr(dict, 'confirmTooMany'), 'dsh-file-download-error');
       else if (plan.blocked === 'too-large') paragraph(tr(dict, 'confirmTooLarge'), 'dsh-file-download-error');
+      else if (plan.blocked === 'too-many') paragraph(tr(dict, 'confirmTooMany'), 'dsh-file-download-error');
       else {
         paragraph(tr(dict, plan.mode === 'direct' ? 'confirmDirect' : plan.mode === 'zip' ? plan.mixed ? 'confirmZipMixed' : plan.compressible ? 'confirmZipCompressed' : 'confirmZipStore' : 'confirmZipMixed'));
         if (plan.mode !== 'direct') paragraph(tr(dict, 'confirmEstimate'));
         var estimateNode = paragraph(plan.mode === 'direct' ? '' : tr(dict, 'estimateAfterStart'), 'dsh-file-download-estimate');
         estimateNode.hidden = plan.mode === 'direct';
         plan.updateZipEstimate = function(value, sampling) { estimateNode.textContent = tr(dict, 'estimateCompressed', { size: formatBytes(value) }) + (sampling ? ' …' : ''); };
+        if (plan.zipEstimate !== void 0 && plan.mode !== 'direct') plan.updateZipEstimate(plan.zipEstimate, true);
         if (plan.size > MAX_FALLBACK_BLOB && typeof window.showSaveFilePicker !== 'function') paragraph(tr(dict, 'streamRequired'), 'dsh-file-download-error');
       }
       var progress = paragraph('', 'dsh-file-download-progress'); progress.hidden = true;
@@ -513,15 +514,18 @@ window.__ModuleLoader__.load({
       var entriesCompleted = 0;
       var totalEntries = plan.kind === 'folder' ? plan.files.length : 1;
       zip.onSampleEstimate = function(sample) {
-        if (sample.compress && sample.sampled) estimatedCompressed += sample.sampleCompressed + Math.max(0, sample.inputBytes - sample.sampleInput) * sample.sampleCompressed / sample.sampleInput;
-        else estimatedStored += sample.inputBytes;
+        var estimate = sample.compress && sample.sampled
+          ? sample.sampleCompressed + Math.max(0, sample.inputBytes - sample.sampleInput) * sample.sampleCompressed / sample.sampleInput
+          : sample.inputBytes;
+        if (sample.compress && sample.sampled) estimatedCompressed += estimate;
+        else estimatedStored += estimate;
         plan.zipEstimate = estimatedCompressed + estimatedStored;
         entriesCompleted++;
         var centralDirectoryEstimate = (entriesCompleted + totalEntries) * 120 + 256;
         if (plan.updateZipEstimate) plan.updateZipEstimate(plan.zipEstimate + centralDirectoryEstimate, entriesCompleted < totalEntries);
       };
-      if (plan.kind === 'folder') await zip.add(plan.name + '/', (async function*(){})(), false, signal, function(){});
-      for (var directory of plan.directories) await zip.add(plan.name + '/' + directory, (async function*(){})(), false, signal, function(){});
+      if (plan.kind === 'folder') await zip.add(plan.name + '/', (async function*(){})(), false, signal, function(){}, 0);
+      for (var directory of plan.directories) await zip.add(plan.name + '/' + directory, (async function*(){})(), false, signal, function(){}, 0);
       if (plan.kind === 'file') {
         if (signal.aborted) throw new Error('Download cancelled');
         await zip.add(plan.files[0].relative, fileChunks(remote, sessionId, plan.path, plan.stat, signal), plan.compressible, signal, onBytes, plan.stat.bytes);
