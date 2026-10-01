@@ -11,6 +11,19 @@ window.__ModuleLoader__.load({
     var Tooltip = primitives.Tooltip;
     var IconDownloadOutlineRegular = primitives.IconDownloadOutlineRegular;
 
+    var IconDownload = IconDownloadOutlineRegular || function (props) {
+      var size = (props && props.size) || 16;
+      return React.createElement('svg', {
+        width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+        strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true,
+        style: { display: 'block' },
+      }, React.createElement('path', { d: 'M12 3v12m0 0 5-5m-5 5-5-5M5 17v3h14v-3' }));
+    };
+    var useState = React.useState;
+    var useEffect = React.useEffect;
+    var useMemo = React.useMemo;
+    var useRef = React.useRef;
+
     var MAX_UNCOMPRESSED = 10 * 1024 * 1024 * 1024;
     var LARGE_FILE_ZIP_THRESHOLD = 1024 * 1024 * 1024;
     var MAX_FALLBACK_BLOB = 256 * 1024 * 1024;
@@ -631,7 +644,7 @@ window.__ModuleLoader__.load({
         children: React.createElement('button', {
           type: 'button', className: 'dsh-file-transfer-tool', 'aria-label': label,
           title: label, 'data-textpreview-tool': 'download', disabled: busy,
-          onClick: click, children: React.createElement(IconDownloadOutlineRegular, { size: 16 })
+          onClick: click, children: React.createElement(IconDownload, { size: 16 })
         })
       });
     }
@@ -832,9 +845,51 @@ window.__ModuleLoader__.load({
     }
 
     /** True while the browser still shows the session the target folder belongs to. */
+    function getActiveSessionId(ctx) {
+      try {
+        if (ctx && ctx.uiSession && ctx.uiSession.adapter && ctx.uiSession.adapter.current) {
+          var snap = ctx.uiSession.adapter.current.getSnapshot();
+          if (snap && snap.key) return snap.key;
+        }
+      } catch (e) {}
+      try {
+        if (ctx && ctx.sessions && ctx.sessions.list) {
+          var snapshot = ctx.sessions.list.getSnapshot();
+          if (snapshot && snapshot.byId) {
+            var rows = Object.values(snapshot.byId);
+            var active = rows.find(function (s) {
+              try {
+                var retain = ctx.sessions.retainInfo(s.id).getSnapshot();
+                return (retain && retain.retainedBy && (retain.retainedBy.mainView || 0) > 0);
+              } catch (e) {
+                return false;
+              }
+            });
+            if (active) return active.id;
+            if (snapshot.ids && snapshot.ids[0]) return snapshot.ids[0];
+            if (rows[0]) return rows[0].id;
+          }
+          if (snapshot && Array.isArray(snapshot.items)) {
+            var activeItem = snapshot.items.find(function (s) {
+              try {
+                var retain = ctx.sessions.retainInfo(s.sessionId || s.id).getSnapshot();
+                return (retain && retain.retainedBy && (retain.retainedBy.mainView || 0) > 0);
+              } catch (e) {
+                return false;
+              }
+            });
+            if (activeItem) return activeItem.sessionId || activeItem.id;
+            if (snapshot.items[0]) return snapshot.items[0].sessionId || snapshot.items[0].id;
+          }
+        }
+      } catch (e) {}
+      return undefined;
+    }
+
     function currentSessionId(ctx, expected) {
-      var snapshot = ctx.uiSession.adapter.current.getSnapshot();
-      return Boolean(snapshot) && snapshot.key === expected;
+      if (!expected) return true;
+      var current = getActiveSessionId(ctx);
+      return !current || current === expected;
     }
 
     function installTreeActions(ctx, remote) {
@@ -849,8 +904,7 @@ window.__ModuleLoader__.load({
         button.innerHTML = ICON_DOWNLOAD;
         button.addEventListener('click', function(event){
           event.preventDefault(); event.stopPropagation();
-          var sessionSnapshot = ctx.uiSession.adapter.current.getSnapshot();
-          var sessionId = sessionSnapshot && sessionSnapshot.key;
+          var sessionId = getActiveSessionId(ctx);
           if (!sessionId) { window.alert(tr(dict,'noSession')); return; }
           button.disabled = true;
           button.title = dict.scanning;
@@ -867,8 +921,7 @@ window.__ModuleLoader__.load({
         button.innerHTML = ICON_UPLOAD;
         button.addEventListener('click', function(event){
           event.preventDefault(); event.stopPropagation();
-          var sessionSnapshot = ctx.uiSession.adapter.current.getSnapshot();
-          var sessionId = sessionSnapshot && sessionSnapshot.key;
+          var sessionId = getActiveSessionId(ctx);
           if (!sessionId) { window.alert(tr(dict,'noSession')); return; }
           chooseAndUpload(ctx, sessionId, path, dict, button);
         });
@@ -930,7 +983,7 @@ window.__ModuleLoader__.load({
     }
 
     exports.name = 'dsh-file-transfer';
-    exports.inject = ['slots', 'locale', 'remote', 'remote.workspaceFiles', 'uiSession'];
+    exports.inject = ["slots", "locale", "remote", "remote.workspaceFiles", "sessions"];
     exports.apply = apply;
     return module.exports;
   }
